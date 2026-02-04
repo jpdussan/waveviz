@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  
+  <!-- PWA Meta Tags -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Waveform">
+  <meta name="theme-color" content="#ffffff">
+  
+  <title>Waveform</title>
+  
+  <!-- Inline manifest for PWA -->
+  <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIldhdmVmb3JtIiwKICAic2hvcnRfbmFtZSI6ICJXYXZlZm9ybSIsCiAgInN0YXJ0X3VybCI6ICIuIiwKICAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwKICAiYmFja2dyb3VuZF9jb2xvciI6ICIjZmZmZmZmIiwKICAidGhlbWVfY29sb3IiOiAiI2ZmZmZmZiIKfQ==">
+  
+  <!-- App Icon (inline SVG as data URI) -->
+  <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDE4MCAxODAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxODAiIGhlaWdodD0iMTgwIiBmaWxsPSIjMUQxRDFGIi8+CjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDMwLCA2MCkiPgo8cmVjdCB4PSIwIiB5PSIyMCIgd2lkdGg9IjgiIGhlaWdodD0iMjAiIGZpbGw9IndoaXRlIiByeD0iMiIvPgo8cmVjdCB4PSIxNSIgeT0iMTAiIHdpZHRoPSI4IiBoZWlnaHQ9IjQwIiBmaWxsPSJ3aGl0ZSIgcng9IjIiLz4KPHJlY3QgeD0iMzAiIHk9IjAiIHdpZHRoPSI4IiBoZWlnaHQ9IjYwIiBmaWxsPSJ3aGl0ZSIgcng9IjIiLz4KPHJlY3QgeD0iNDUiIHk9IjE1IiB3aWR0aD0iOCIgaGVpZ2h0PSIzMCIgZmlsbD0id2hpdGUiIHJ4PSIyIi8+CjxyZWN0IHg9IjYwIiB5PSI1IiB3aWR0aD0iOCIgaGVpZ2h0PSI1MCIgZmlsbD0id2hpdGUiIHJ4PSIyIi8+CjxyZWN0IHg9Ijc1IiB5PSIxOCIgd2lkdGg9IjgiIGhlaWdodD0iMjQiIGZpbGw9IndoaXRlIiByeD0iMiIvPgo8cmVjdCB4PSI5MCIgeT0iOCIgd2lkdGg9IjgiIGhlaWdodD0iNDQiIGZpbGw9IndoaXRlIiByeD0iMiIvPgo8cmVjdCB4PSIxMDUiIHk9IjIyIiB3aWR0aD0iOCIgaGVpZ2h0PSIxNiIgZmlsbD0id2hpdGUiIHJ4PSIyIi8+CjwvZz4KPC9zdmc+">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    html, body, #root {
+      height: 100%;
+      overflow: hidden;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+      background: #ffffff;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <script type="text/babel">
+    const { useState, useRef, useEffect } = React;
+
+    const WaveformVisualizer = () => {
+      const [hasAudio, setHasAudio] = useState(false);
+      const [isPlaying, setIsPlaying] = useState(false);
+      const [waveformData, setWaveformData] = useState([]);
+      const [progress, setProgress] = useState(0);
+      const [duration, setDuration] = useState(0);
+      const [isDragging, setIsDragging] = useState(false);
+      
+      const audioContextRef = useRef(null);
+      const audioBufferRef = useRef(null);
+      const sourceNodeRef = useRef(null);
+      const animationRef = useRef(null);
+      const startTimeRef = useRef(0);
+      const pausedAtRef = useRef(0);
+      const fileInputRef = useRef(null);
+      const containerRef = useRef(null);
+      const wasPlayingRef = useRef(false);
+      const dragStartXRef = useRef(0);
+      const dragStartProgressRef = useRef(0);
+      const isPlayingRef = useRef(false);
+
+      const WAVEFORM_WIDTH = 1200;
+
+      useEffect(() => {
+        isPlayingRef.current = isPlaying;
+      }, [isPlaying]);
+
+      const processWaveform = (audioBuffer) => {
+        const rawData = audioBuffer.getChannelData(0);
+        const samples = 300;
+        const blockSize = Math.floor(rawData.length / samples);
+        const filteredData = [];
+        
+        for (let i = 0; i < samples; i++) {
+          let sum = 0;
+          let max = 0;
+          for (let j = 0; j < blockSize; j++) {
+            const val = Math.abs(rawData[blockSize * i + j]);
+            sum += val;
+            if (val > max) max = val;
+          }
+          filteredData.push({ avg: sum / blockSize, peak: max });
+        }
+        
+        const maxPeak = Math.max(...filteredData.map(d => d.peak));
+        return filteredData.map(d => ({
+          avg: d.avg / maxPeak,
+          peak: d.peak / maxPeak
+        }));
+      };
+
+      const handleFileUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        stopAudio();
+
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          
+          if (!audioContextRef.current) {
+            audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+          }
+          
+          const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
+          audioBufferRef.current = audioBuffer;
+          
+          setWaveformData(processWaveform(audioBuffer));
+          setDuration(audioBuffer.duration);
+          setHasAudio(true);
+          setProgress(0);
+          pausedAtRef.current = 0;
+          
+        } catch (err) {
+          console.error('Error loading audio:', err);
+        }
+      };
+
+      const play = () => {
+        if (!audioBufferRef.current || !audioContextRef.current) return;
+        
+        if (audioContextRef.current.state === 'suspended') {
+          audioContextRef.current.resume();
+        }
+        
+        sourceNodeRef.current = audioContextRef.current.createBufferSource();
+        sourceNodeRef.current.buffer = audioBufferRef.current;
+        sourceNodeRef.current.connect(audioContextRef.current.destination);
+        
+        const offset = pausedAtRef.current;
+        sourceNodeRef.current.start(0, offset);
+        startTimeRef.current = audioContextRef.current.currentTime - offset;
+        
+        sourceNodeRef.current.onended = () => {
+          if (isPlayingRef.current) {
+            setIsPlaying(false);
+            setProgress(100);
+            pausedAtRef.current = 0;
+            cancelAnimationFrame(animationRef.current);
+          }
+        };
+        
+        setIsPlaying(true);
+        animate();
+      };
+
+      const pause = () => {
+        if (sourceNodeRef.current && audioContextRef.current) {
+          const elapsed = audioContextRef.current.currentTime - startTimeRef.current;
+          pausedAtRef.current = elapsed;
+          sourceNodeRef.current.onended = null;
+          try {
+            sourceNodeRef.current.stop();
+          } catch (e) {}
+          sourceNodeRef.current = null;
+        }
+        cancelAnimationFrame(animationRef.current);
+        setIsPlaying(false);
+      };
+
+      const stopAudio = () => {
+        if (sourceNodeRef.current) {
+          sourceNodeRef.current.onended = null;
+          try {
+            sourceNodeRef.current.stop();
+          } catch (e) {}
+          sourceNodeRef.current = null;
+        }
+        cancelAnimationFrame(animationRef.current);
+        setIsPlaying(false);
+        pausedAtRef.current = 0;
+        setProgress(0);
+      };
+
+      const togglePlayPause = () => {
+        if (isPlaying) {
+          pause();
+        } else {
+          play();
+        }
+      };
+
+      const animate = () => {
+        if (!audioBufferRef.current || !audioContextRef.current) return;
+        
+        const elapsed = audioContextRef.current.currentTime - startTimeRef.current;
+        const dur = audioBufferRef.current.duration;
+        setProgress(Math.min((elapsed / dur) * 100, 100));
+        
+        animationRef.current = requestAnimationFrame(animate);
+      };
+
+      const getClientX = (e) => {
+        if (e.touches && e.touches.length > 0) {
+          return e.touches[0].clientX;
+        }
+        return e.clientX;
+      };
+
+      const handleDragStart = (e) => {
+        if (!audioBufferRef.current) return;
+        
+        e.preventDefault();
+        
+        setIsDragging(true);
+        wasPlayingRef.current = isPlaying;
+        if (isPlaying) pause();
+        
+        dragStartXRef.current = getClientX(e);
+        dragStartProgressRef.current = progress;
+      };
+
+      const handleDragMove = (e) => {
+        if (!isDragging || !audioBufferRef.current) return;
+        
+        e.preventDefault();
+        
+        const currentX = getClientX(e);
+        const deltaX = dragStartXRef.current - currentX;
+        
+        const progressDelta = (deltaX / WAVEFORM_WIDTH) * 100;
+        const newProgress = Math.max(0, Math.min(100, dragStartProgressRef.current + progressDelta));
+        
+        setProgress(newProgress);
+        pausedAtRef.current = (newProgress / 100) * audioBufferRef.current.duration;
+      };
+
+      const handleDragEnd = () => {
+        if (!isDragging) return;
+        setIsDragging(false);
+        
+        if (wasPlayingRef.current) {
+          play();
+        }
+      };
+
+      const formatTime = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+      };
+
+      const currentTime = (progress / 100) * duration;
+      const waveformOffset = -(progress / 100) * WAVEFORM_WIDTH;
+
+      return (
+        <div style={{
+          height: '100%',
+          background: '#ffffff',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            paddingTop: 'env(safe-area-inset-top, 20px)',
+            background: '#ffffff',
+          }} />
+
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            paddingBottom: 'env(safe-area-inset-bottom, 20px)',
+          }}>
+            
+            {!hasAudio ? (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{
+                  width: '88px',
+                  height: '88px',
+                  borderRadius: '50%',
+                  background: 'linear-gradient(145deg, #fafafa, #f0f0f0)',
+                  boxShadow: '0 4px 24px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#1d1d1f" strokeWidth="1.5">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div style={{
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  position: 'relative',
+                }}>
+                  <div
+                    ref={containerRef}
+                    onMouseDown={handleDragStart}
+                    onMouseMove={handleDragMove}
+                    onMouseUp={handleDragEnd}
+                    onMouseLeave={handleDragEnd}
+                    onTouchStart={handleDragStart}
+                    onTouchMove={handleDragMove}
+                    onTouchEnd={handleDragEnd}
+                    style={{
+                      position: 'relative',
+                      height: '45vh',
+                      cursor: isDragging ? 'grabbing' : 'grab',
+                      overflow: 'hidden',
+                      touchAction: 'none',
+                    }}
+                  >
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      bottom: 0,
+                      left: '50%',
+                      width: `${WAVEFORM_WIDTH}px`,
+                      transform: `translateX(${waveformOffset}px)`,
+                      transition: isDragging || isPlaying ? 'none' : 'transform 0.1s ease-out',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}>
+                      <svg
+                        width={WAVEFORM_WIDTH}
+                        height="100%"
+                        viewBox={`0 0 ${waveformData.length} 100`}
+                        preserveAspectRatio="none"
+                        style={{ overflow: 'visible' }}
+                      >
+                        {waveformData.map((d, i) => {
+                          const barProgress = (i / waveformData.length) * 100;
+                          const isPlayed = barProgress < progress;
+                          const peakHeight = d.peak * 46;
+                          const avgHeight = d.avg * 32;
+                          
+                          return (
+                            <g key={i}>
+                              <rect
+                                x={i * 1.0}
+                                y={50 - peakHeight}
+                                width={0.5}
+                                height={peakHeight}
+                                fill={isPlayed ? '#1d1d1f' : '#d1d1d6'}
+                              />
+                              <rect
+                                x={i * 1.0}
+                                y={50}
+                                width={0.5}
+                                height={peakHeight}
+                                fill={isPlayed ? '#1d1d1f' : '#d1d1d6'}
+                              />
+                              <rect
+                                x={i * 1.0}
+                                y={50 - avgHeight}
+                                width={0.5}
+                                height={avgHeight}
+                                fill={isPlayed ? '#48484a' : '#e5e5ea'}
+                              />
+                              <rect
+                                x={i * 1.0}
+                                y={50}
+                                width={0.5}
+                                height={avgHeight}
+                                fill={isPlayed ? '#48484a' : '#e5e5ea'}
+                              />
+                            </g>
+                          );
+                        })}
+                      </svg>
+                    </div>
+
+                    <div style={{
+                      position: 'absolute',
+                      top: '10%',
+                      bottom: '10%',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: '3px',
+                      background: '#ff3b30',
+                      borderRadius: '1.5px',
+                      boxShadow: '0 0 16px rgba(255,59,48,0.6)',
+                      zIndex: 5,
+                    }} />
+
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      bottom: 0,
+                      left: 0,
+                      width: '60px',
+                      background: 'linear-gradient(to right, #ffffff, transparent)',
+                      pointerEvents: 'none',
+                    }} />
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      bottom: 0,
+                      right: 0,
+                      width: '60px',
+                      background: 'linear-gradient(to left, #ffffff, transparent)',
+                      pointerEvents: 'none',
+                    }} />
+                  </div>
+                </div>
+
+                <div style={{
+                  textAlign: 'center',
+                  padding: '0 0 24px',
+                }}>
+                  <span style={{
+                    fontSize: '48px',
+                    fontWeight: '200',
+                    color: '#1d1d1f',
+                    fontFeatureSettings: '"tnum"',
+                    letterSpacing: '-2px',
+                  }}>
+                    {formatTime(currentTime)}
+                  </span>
+                  <span style={{
+                    fontSize: '20px',
+                    fontWeight: '300',
+                    color: '#8e8e93',
+                    marginLeft: '8px',
+                  }}>
+                    / {formatTime(duration)}
+                  </span>
+                </div>
+
+                <div style={{
+                  padding: '0 40px 20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '36px',
+                }}>
+                  <button
+                    onClick={stopAudio}
+                    style={{
+                      width: '56px',
+                      height: '56px',
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      opacity: 0.7,
+                    }}
+                  >
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="#1d1d1f">
+                      <path d="M6 6h2v12H6V6zm3.5 6l8.5 6V6l-8.5 6z"/>
+                    </svg>
+                  </button>
+
+                  <button
+                    onClick={togglePlayPause}
+                    style={{
+                      width: '84px',
+                      height: '84px',
+                      borderRadius: '50%',
+                      border: 'none',
+                      background: '#1d1d1f',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 24px rgba(0,0,0,0.2), 0 8px 32px rgba(0,0,0,0.1)',
+                    }}
+                  >
+                    {isPlaying ? (
+                      <svg width="34" height="34" viewBox="0 0 24 24" fill="#fff">
+                        <rect x="6" y="4" width="4" height="16" rx="1"/>
+                        <rect x="14" y="4" width="4" height="16" rx="1"/>
+                      </svg>
+                    ) : (
+                      <svg width="34" height="34" viewBox="0 0 24 24" fill="#fff" style={{ marginLeft: '4px' }}>
+                        <path d="M8 5v14l11-7z"/>
+                      </svg>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      width: '56px',
+                      height: '56px',
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      opacity: 0.7,
+                    }}
+                  >
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1d1d1f" strokeWidth="2" strokeLinecap="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                    </svg>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="audio/*"
+            onChange={handleFileUpload}
+            style={{ display: 'none' }}
+          />
+        </div>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<WaveformVisualizer />);
+  </script>
+</body>
+</html>
